@@ -2,22 +2,22 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
 
+  inicializarBanco,
 
-// Chave usada para salvar no AsyncStorage
+  buscarTodasTransacoes,
 
-// Prefixo '@minhasfinancas:' evita conflito com outros apps
+  inserirTransacao,
 
-const CHAVE_STORAGE = '@minhasfinancas:transacoes';
+  excluirTransacao,
 
+} from '../database/db';
+import { logTransacoes } from '../database/db';
 
-// 1. Criamos o contexto vazio
 
 const TransacoesContext = createContext(null);
 
-
-// 2. O Provider é o componente que envolve o app e disponibiliza o estado
 
 export function TransacoesProvider({ children }) {
 
@@ -26,16 +26,20 @@ export function TransacoesProvider({ children }) {
   const [carregando, setCarregando] = useState(true);
 
 
-  // Executa uma única vez quando o app abre
-
   useEffect(() => {
 
-    carregarTransacoes();
+    (async () => {
+
+      await inicializarBanco();   // cria a tabela se não existir
+
+      await carregarTransacoes();
+
+      await logTransacoes();
+
+    })();
 
   }, []);
 
-
-  // Lê as transações salvas no dispositivo
 
   async function carregarTransacoes() {
 
@@ -43,21 +47,15 @@ export function TransacoesProvider({ children }) {
 
       setCarregando(true);
 
-      const json = await AsyncStorage.getItem(CHAVE_STORAGE);
+      const dados = await buscarTodasTransacoes();
 
-      if (json !== null) {
-
-        setTransacoes(JSON.parse(json));
-
-      }
+      setTransacoes(dados);
 
     } catch (erro) {
 
       console.error('Erro ao carregar transações:', erro);
 
     } finally {
-
-      // "finally" sempre executa, mesmo se der erro
 
       setCarregando(false);
 
@@ -66,33 +64,23 @@ export function TransacoesProvider({ children }) {
   }
 
 
-  // Adiciona uma nova transação e salva no AsyncStorage
-
   async function adicionarTransacao(novaTransacao) {
 
-    const atualizadas = [novaTransacao, ...transacoes];
+    await inserirTransacao(novaTransacao);
 
-    setTransacoes(atualizadas);  // atualiza a UI imediatamente
-
-    await AsyncStorage.setItem(CHAVE_STORAGE, JSON.stringify(atualizadas));
+    setTransacoes(prev => [novaTransacao, ...prev]);
 
   }
 
-
-  // Remove uma transação pelo id e salva no AsyncStorage
 
   async function removerTransacao(id) {
 
-    const atualizadas = transacoes.filter(t => t.id !== id);
+    await excluirTransacao(id);
 
-    setTransacoes(atualizadas);
-
-    await AsyncStorage.setItem(CHAVE_STORAGE, JSON.stringify(atualizadas));
+    setTransacoes(prev => prev.filter(t => t.id !== id));
 
   }
 
-
-  // Calcula os totais a partir do estado atual
 
   const receitas = transacoes
 
@@ -107,8 +95,6 @@ export function TransacoesProvider({ children }) {
 
     .reduce((soma, t) => soma + t.valor, 0);
 
-
-  // Tudo que o contexto disponibiliza para as telas
 
   const valor = {
 
@@ -141,8 +127,6 @@ export function TransacoesProvider({ children }) {
 
 }
 
-
-// 3. Hook customizado — facilita o uso do contexto nas telas
 
 export function useTransacoes() {
 
